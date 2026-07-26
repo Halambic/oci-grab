@@ -4,7 +4,9 @@ name: capture instance ARM
 # Chaque déclenchement fait une passe sur toutes les cibles (AD × fault domain).
 on:
   schedule:
-    - cron: "*/15 * * * *"
+    # Minutes volontairement décalées : GitHub retarde ou saute les déclenchements
+    # planifiés en début d'heure, quand sa charge est maximale.
+    - cron: "7,22,37,52 * * * *"
   workflow_dispatch:
 
 concurrency:
