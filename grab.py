@@ -280,11 +280,11 @@ def main():
             if any(m in msg for m in CAPACITY_MARKERS):
                 log(f"#{n} {court} {short_ad}/{fd or '-'} : pas de capacité")
             elif exc.status == 429 or exc.code == "TooManyRequests":
-                if args.sweep:  # en CI, dormir 5 min ne sert qu'à brûler des minutes
-                    log(f"#{n} throttling OCI — passe interrompue, retour au prochain cron")
-                    return 2
-                log(f"#{n} throttling OCI — pause 5 min")
-                time.sleep(300)
+                # En CI on ne peut pas dormir 5 min sans brûler le temps du job, mais
+                # abandonner la passe la réduisait à une seule tentative utile.
+                pause = 120 if args.sweep else 300
+                log(f"#{n} throttling OCI — pause {pause}s")
+                time.sleep(pause)
             elif exc.code in FATAL_CODES:
                 log(f"✗ Erreur définitive {exc.status} {exc.code} : {exc.message}")
                 notify("oci-grab arrêté", f"{exc.code} : {exc.message}")

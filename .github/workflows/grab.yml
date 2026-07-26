@@ -18,7 +18,7 @@ permissions:
 jobs:
   grab:
     runs-on: ubuntu-latest
-    timeout-minutes: 15 # 6 cibles espacées de 75 s + installation
+    timeout-minutes: 25 # 6 cibles à 90 s, plus les pauses de throttling
     steps:
       - uses: actions/checkout@v4
 
@@ -57,7 +57,7 @@ jobs:
           GRAB_SSH_PUBKEY: ~/oracle_arm.pub
           GRAB_OCPUS: "2"
           GRAB_MEMORY_GB: "12"
-          GRAB_INTERVAL: "75" # espacement entre tentatives : en dessous, OCI throttle
+          GRAB_INTERVAL: "90" # cadence dont on a vérifié qu'elle ne déclenche pas le throttling
         run: |
           set +e
           python grab.py --sweep
