@@ -1,0 +1,95 @@
+name: capture instance ARM
+
+# Tente d'obtenir l'instance Oracle Always Free sans dépendre d'un PC allumé.
+# Chaque déclenchement fait une passe sur toutes les cibles (AD × fault domain).
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: grab
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write # pour ouvrir un ticket (= notification par mail) en cas de succès
+
+jobs:
+  grab:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15 # 6 cibles espacées de 75 s + installation
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install oci
+
+      - name: Config OCI depuis les secrets
+        env:
+          OCI_USER: ${{ secrets.OCI_USER }}
+          OCI_TENANCY: ${{ secrets.OCI_TENANCY }}
+          OCI_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT }}
+          OCI_REGION: ${{ secrets.OCI_REGION }}
+          OCI_KEY: ${{ secrets.OCI_KEY }}
+          SSH_PUBKEY: ${{ secrets.SSH_PUBKEY }}
+        run: |
+          mkdir -p ~/.oci
+          printf '%s\n' "$OCI_KEY" > ~/.oci/oci_api_key.pem
+          chmod 600 ~/.oci/oci_api_key.pem
+          printf '%s\n' "$SSH_PUBKEY" > ~/oracle_arm.pub
+          cat > ~/.oci/config <<EOF
+          [DEFAULT]
+          user=$OCI_USER
+          tenancy=$OCI_TENANCY
+          fingerprint=$OCI_FINGERPRINT
+          region=$OCI_REGION
+          key_file=$HOME/.oci/oci_api_key.pem
+          EOF
+
+      - name: Tentative
+        id: grab
+        env:
+          GRAB_SSH_PUBKEY: ~/oracle_arm.pub
+          GRAB_OCPUS: "2"
+          GRAB_MEMORY_GB: "12"
+          GRAB_INTERVAL: "75" # espacement entre tentatives : en dessous, OCI throttle
+        run: |
+          set +e
+          python grab.py --sweep
+          code=$?
+          set -e
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          case $code in
+            0) echo "obtenue=oui" >> "$GITHUB_OUTPUT" ;;  # succès
+            2) echo "Pas de capacité pour cette fois." ;;  # normal, run vert
+            *) exit $code ;;                              # erreur définitive → run rouge + mail
+          esac
+
+      - name: Publier les infos de l'instance
+        if: steps.grab.outputs.obtenue == 'oui'
+        uses: actions/upload-artifact@v4
+        with:
+          name: instance
+          path: ~/oci-grab/instance.json
+
+      - name: Ouvrir un ticket pour prévenir
+        if: steps.grab.outputs.obtenue == 'oui'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          {
+            echo "L'instance Oracle Always Free a été créée."
+            echo
+            echo "IP et commande SSH dans l'artefact \`instance\` du run : $RUN_URL"
+            echo
+            echo "Pense à couper le cron (Settings → Actions, ou supprime le workflow) :"
+            echo "le garde-fou du script empêche une 2ᵉ instance, mais autant arrêter la CI."
+          } > body.md
+          gh issue create --repo "$GITHUB_REPOSITORY" \
+            --title "Instance ARM obtenue 🎉" --body-file body.md

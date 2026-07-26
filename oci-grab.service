@@ -1,0 +1,14 @@
+[Unit]
+Description=Boucle de capture d'une instance Oracle ARM Always Free
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/home/Mahion/oci-grab/grab.py
+Restart=on-failure
+RestartSec=120
+# Code 1 = erreur définitive (quota, auth) : inutile de relancer
+SuccessExitStatus=0 1
+
+[Install]
+WantedBy=default.target
